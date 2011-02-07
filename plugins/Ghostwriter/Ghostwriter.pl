@@ -3,7 +3,7 @@ package MT::Plugin::Ghostwriter;
 use strict;
 use base qw( MT::Plugin );
 use MT 4.0;
-
+#hacked on by Tyler Gillies
 our $VERSION = "1.3";
 
 my $plugin = MT::Plugin::Ghostwriter->new({
@@ -18,6 +18,18 @@ my $plugin = MT::Plugin::Ghostwriter->new({
     plugin_link => "http://beausmith.com/mt/plugins/ghostwriter/",
     system_config_template => 'tmpl/config.tmpl',
 });
+q^
+my $author = MT::Author->new;
+
+   $author->name($name);
+   $author->set_password($passwd);
+   $author->email($email);
+   $author->can_create_blog(1);
+   $author->can_view_blog(1);
+   $author->created_by(1);
+   $author->save
+       or die $author->errstr;
+^;
 
 # initialize plugin
 MT->add_plugin($plugin);
@@ -47,6 +59,32 @@ sub _pre_save {
     my $user = $app->user;
     my $oldauthor  = $app->param("original_author_id") || 0;
     my $newauthor  = $app->param("new_author_id");
+    my $is_new_user = $app->param("this-is-new");
+    my $email = "tjgillies\@gmail.com";
+    my $author = MT::Author->new;
+
+    if ( $is_new_user) {
+      $author->name("guest author");
+      $author->nickname($app->param("new_author"));
+      $author->set_password("tyler");
+      $author->email($email);
+      $author->can_create_blog(1);
+      #$author->can_view_blog(1);
+      $author->created_by(1);
+      
+    
+      $author->save
+         or die $author->errstr;
+      $newauthor = $author->id;
+    }
+    my $authorname = $author->name;
+    my $authorid = $author->id;
+    MT->log({  
+      message => "Should be second iteration with $authorname, $authorid",
+      class => 'system',
+      level => MT::Log::DEBUG(), 
+    });
+
 
     # Return unless there's been a change in the author_id
     # This prevents false positives for $entry->is_changed('author_id')
@@ -151,12 +189,24 @@ sub _update_param {
     });
 
     $created_by->innerHTML(<<'END_HTML');
+            <script src='https://ajax.googleapis.com/ajax/libs/jquery/1.5.0/jquery.min.js'></script>
             <input type="hidden" name="original_author_id" value="<$mt:var name="entry_author_id"$>" />
+            <div id='selector'>
             <select name="new_author_id" class="full-width">
         <mt:loop name="author_loop">
                 <option value="<$mt:var name="author_id"$>"<mt:if name="author_is_selected"> selected="selected"</mt:if>><$mt:var name="nickname"$></option>
         </mt:loop>
+        
             </select>
+            </div>
+            <div id='new-user'>
+            <input type='text' name='new_author'/>
+            <input type='hidden' name='this-is-new' value='1'/>
+            </div>
+            <script>
+            $('#new-user').hide();
+            </script>
+            <button onclick="$('#selector').hide(); $('#new-user').show(); return false">create new user</button>
 END_HTML
 
     $template->insertBefore($created_by, $position);
